@@ -378,3 +378,37 @@ tr.anomaly td { color: var(--danger); }
 @media (prefers-reduced-motion: reduce) {
 	* { animation: none !important; transition: none !important; }
 }
+
+/* Settings dialog */
+dialog.settings {
+	margin: auto;
+	width: min(560px, calc(100vw - 32px));
+	max-height: calc(100vh - 32px);
+	background: var(--surface);
+	color: var(--ink);
+	border: 1px solid var(--rule);
+	border-radius: 16px;
+	padding: 1.5rem;
+}
+dialog.settings::backdrop { background: rgb(0 0 0 / 0.45); }
+dialog.settings form { display: grid; gap: 1.1rem; }
+.field { display: grid; gap: 0.35rem; border: none; }
+.field label, .field legend { font-weight: 600; }
+.field legend { margin-bottom: 0.35rem; }
+.hint { color: var(--muted); font-size: 0.85rem; }
+.field textarea {
+	font: 400 0.85rem/1.5 ui-monospace, "SF Mono", Menlo, monospace;
+	color: var(--ink);
+	background: var(--ground);
+	border: 1px solid var(--rule);
+	border-radius: 8px;
+	padding: 0.6rem 0.75rem;
+	resize: vertical;
+}
+.field textarea[aria-invalid="true"] { border-color: var(--danger); }
+.field-error { color: var(--danger); font-size: 0.85rem; }
+.radio { display: flex; gap: 0.55rem; align-items: center; font-weight: 400 !important; cursor: pointer; }
+.radio input { accent-color: var(--ink); }
+.dialog-actions { display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap; margin-top: 0.4rem; }
+.dialog-actions .spacer { flex: 1; }
+.center-screen .masthead-actions { justify-content: center; }

@@ -15,8 +15,13 @@ block authorship and parachain consensus (backing, plus rare dispute statements)
 
 Scans take about a minute per era and are cached in IndexedDB.
 
+The Connections dialog sets the RPC endpoints of each chain, or reads Asset Hub and the People
+chain through an in-browser smoldot light client. The relay chain always goes over RPC and must
+be an archive node, since the scan reads months-old headers and state.
+
 ```bash
 bun install
 bun run dev
 bun scripts/check-era.ts [era]   # scan one era from the CLI and cross-check against Asset Hub
+bun scripts/check-smoldot.ts     # read era points and identities through smoldot
 ```

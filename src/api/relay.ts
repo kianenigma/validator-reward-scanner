@@ -11,8 +11,8 @@ const BLOCKS_PER_SESSION_HINT = 2400;
 const accountCodec = AccountId(0);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const rpc = <T = any>(method: string, params: unknown[]): Promise<T> =>
-	relayClient()._request<T, unknown[]>(method, params);
+const rpc = async <T = any>(method: string, params: unknown[]): Promise<T> =>
+	(await relayClient())._request<T, unknown[]>(method, params);
 
 function hexToBytes(hex: string): Uint8Array {
 	const h = hex.startsWith("0x") ? hex.slice(2) : hex;

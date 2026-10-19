@@ -10,7 +10,7 @@ import type { EraPoints, EraScan, Overview, SessionRange } from "../types";
  * `[start(e), start(e + 1))`, with `start` from `Staking::BondedEras`.
  */
 export async function fetchOverview(onProgress: (msg: string) => void): Promise<Overview> {
-	const api = ahApi();
+	const api = await ahApi();
 	onProgress("Reading staking state from Asset Hub...");
 	const [active, bonded, pointEntries, rewardEntries] = await Promise.all([
 		api.query.Staking.ActiveEra.getValue(),
@@ -104,7 +104,7 @@ function displayName(data: any): string | null {
 
 /** On-chain identities of `stashes` from the People chain, as `parent/sub` where applicable. */
 export async function fetchIdentities(stashes: string[]): Promise<Map<string, string>> {
-	const api = peopleApi();
+	const api = await peopleApi();
 	const supers = await api.query.Identity.SuperOf.getValues(stashes.map((s) => [s]));
 	const owners = stashes.map((s, i) => supers[i]?.[0] ?? s);
 	const unique = [...new Set(owners)];

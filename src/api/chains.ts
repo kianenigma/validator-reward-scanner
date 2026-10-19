@@ -1,16 +1,7 @@
 import { createClient, type PolkadotClient } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws-provider";
 import { dot, dotPeople, pah } from "@polkadot-api/descriptors";
-
-// Endpoints are tried in order; the provider rotates to the next one on failure. The relay
-// endpoints must be archive nodes: we read state and headers of blocks months in the past.
-const RELAY_RPC = ["wss://rpc.polkadot.io", "wss://polkadot-rpc.n.dwellir.com", "wss://rpc.ibp.network/polkadot"];
-const ASSET_HUB_RPC = [
-	"wss://polkadot-asset-hub-rpc.polkadot.io",
-	"wss://asset-hub-polkadot-rpc.n.dwellir.com",
-	"wss://sys.ibp.network/asset-hub-polkadot",
-];
-const PEOPLE_RPC = ["wss://polkadot-people-rpc.polkadot.io", "wss://sys.ibp.network/people-polkadot"];
+import { DEFAULT_SETTINGS, type Settings } from "../settings";
 
 /** Points the relay chain credits a block author with (`StakingAhClient::PointsPerBlock`). */
 export const POINTS_PER_BLOCK = 20;
@@ -18,28 +9,76 @@ export const POINTS_PER_BLOCK = 20;
 export const POINTS_PER_BACKING = 20;
 export const SESSIONS_PER_ERA = 6;
 
-let clients: { relay: PolkadotClient; ah: PolkadotClient; people: PolkadotClient } | null = null;
-
-function get() {
-	if (!clients) {
-		clients = {
-			relay: createClient(getWsProvider(RELAY_RPC)),
-			ah: createClient(getWsProvider(ASSET_HUB_RPC)),
-			people: createClient(getWsProvider(PEOPLE_RPC)),
-		};
-	}
-	return clients;
+let settings: Settings = DEFAULT_SETTINGS;
+type Provider = Parameters<typeof createClient>[0];
+interface Clients {
+	relay: PolkadotClient;
+	ah: PolkadotClient;
+	people: PolkadotClient;
 }
 
-export const relayClient = () => get().relay;
-export const ahApi = () => get().ah.getTypedApi(pah);
-export const peopleApi = () => get().people.getTypedApi(dotPeople);
-export const relayApi = () => get().relay.getTypedApi(dot);
+let clients: Clients | null = null;
+let teardown: (() => void) | null = null;
+
+/** Sets where chains are read from. Takes effect for clients created after this call. */
+export function configure(s: Settings) {
+	destroyClients();
+	settings = s;
+}
+
+/**
+ * Asset Hub and People providers through an in-browser smoldot light client. Loaded on demand so
+ * the default RPC setup never downloads smoldot.
+ */
+async function smoldotProviders(): Promise<{ ah: Provider; people: Provider }> {
+	const [{ startFromWorker }, { getSmProvider }, { default: SmWorker }, relaySpec, ahSpec, peopleSpec] =
+		await Promise.all([
+			import("polkadot-api/smoldot/from-worker"),
+			import("polkadot-api/sm-provider"),
+			import("polkadot-api/smoldot/worker?worker"),
+			import("polkadot-api/chains/polkadot"),
+			import("polkadot-api/chains/polkadot_asset_hub"),
+			import("polkadot-api/chains/polkadot_people"),
+		]);
+	const smoldot = startFromWorker(new SmWorker());
+	teardown = () => smoldot.terminate();
+	const relay = await smoldot.addChain({ chainSpec: relaySpec.chainSpec });
+	const [ah, people] = await Promise.all([
+		smoldot.addChain({ chainSpec: ahSpec.chainSpec, potentialRelayChains: [relay] }),
+		smoldot.addChain({ chainSpec: peopleSpec.chainSpec, potentialRelayChains: [relay] }),
+	]);
+	return { ah: getSmProvider(ah), people: getSmProvider(people) };
+}
+
+let pending: Promise<Clients> | null = null;
+
+function get(): Promise<Clients> {
+	if (clients) return Promise.resolve(clients);
+	pending ??= (async () => {
+		const relay = createClient(getWsProvider(settings.relayRpc));
+		const providers =
+			settings.source === "smoldot"
+				? await smoldotProviders()
+				: { ah: getWsProvider(settings.assetHubRpc), people: getWsProvider(settings.peopleRpc) };
+		clients = { relay, ah: createClient(providers.ah), people: createClient(providers.people) };
+		pending = null;
+		return clients;
+	})();
+	return pending;
+}
+
+export const relayClient = async () => (await get()).relay;
+export const ahApi = async () => (await get()).ah.getTypedApi(pah);
+export const peopleApi = async () => (await get()).people.getTypedApi(dotPeople);
+export const relayApi = async () => (await get()).relay.getTypedApi(dot);
 
 export function destroyClients() {
-	if (!clients) return;
-	clients.relay.destroy();
-	clients.ah.destroy();
-	clients.people.destroy();
-	clients = null;
+	if (clients) {
+		clients.relay.destroy();
+		clients.ah.destroy();
+		clients.people.destroy();
+		clients = null;
+	}
+	teardown?.();
+	teardown = null;
 }

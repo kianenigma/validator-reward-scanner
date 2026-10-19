@@ -7,7 +7,7 @@ import { blockHash, sessionValidatorsAt, finalizedNumber } from "../src/api/rela
 // The hardcoded raw keys must agree with the typed API.
 const fin = await finalizedNumber();
 const hash = await blockHash(fin);
-const typed = await relayApi().query.Session.Validators.getValue({ at: hash });
+const typed = await (await relayApi()).query.Session.Validators.getValue({ at: hash });
 const raw = await sessionValidatorsAt(fin);
 if (typed.join() !== raw.join()) throw new Error("raw Session.Validators decode mismatch");
 console.log(`raw storage decode ok (${raw.length} validators)`);

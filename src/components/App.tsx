@@ -5,6 +5,9 @@ import type { EraScan, Overview } from "../types";
 import { EraStrip } from "./EraStrip";
 import { EraDetail } from "./EraDetail";
 import { useTheme, type ThemeChoice } from "../theme";
+import { SettingsDialog } from "./SettingsDialog";
+import { configure } from "../api/chains";
+import { loadSettings, saveSettings, type Settings } from "../settings";
 
 const THEMES: [ThemeChoice, string][] = [
 	["system", "Auto"],
@@ -30,6 +33,25 @@ export function App() {
 	const [scanError, setScanError] = useState<string | null>(null);
 	const running = useRef(false);
 	const [theme, setTheme] = useTheme();
+	const [settings] = useState<Settings>(() => {
+		const s = loadSettings();
+		configure(s);
+		return s;
+	});
+	const [settingsOpen, setSettingsOpen] = useState(false);
+	// Reloading is the simplest way to drop every open connection, cached query and running scan.
+	const applySettings = (s: Settings) => {
+		saveSettings(s);
+		location.reload();
+	};
+	const settingsDialog = (
+		<SettingsDialog
+			open={settingsOpen}
+			settings={settings}
+			onClose={() => setSettingsOpen(false)}
+			onSave={applySettings}
+		/>
+	);
 
 	useEffect(() => {
 		(async () => {
@@ -92,9 +114,15 @@ export function App() {
 			<main className="center-screen">
 				<h1 className="display">Couldn't read Polkadot</h1>
 				<p className="error-msg">{error}</p>
-				<button className="btn primary" onClick={() => location.reload()}>
-					Try again
-				</button>
+				<div className="masthead-actions">
+					<button className="btn primary" onClick={() => location.reload()}>
+						Try again
+					</button>
+					<button className="btn" onClick={() => setSettingsOpen(true)}>
+						Change connections
+					</button>
+				</div>
+				{settingsDialog}
 			</main>
 		);
 	}
@@ -102,7 +130,10 @@ export function App() {
 		return (
 			<main className="center-screen">
 				<div className="loader" aria-hidden />
-				<p className="muted">{progress}</p>
+				<p className="muted">
+					{settings.source === "smoldot" ? "Syncing the smoldot light client. " : ""}
+					{progress}
+				</p>
 			</main>
 		);
 	}
@@ -122,6 +153,9 @@ export function App() {
 				<div className="masthead-actions">
 					<button className="btn" disabled={unscanned.length === 0} onClick={() => enqueue(unscanned.slice(0, 7))}>
 						Scan the 7 latest eras
+					</button>
+					<button className="btn" onClick={() => setSettingsOpen(true)}>
+						Connections{settings.source === "smoldot" ? ": smoldot" : ""}
 					</button>
 					<div className="theme-switch" role="group" aria-label="Color theme">
 						{THEMES.map(([value, label]) => (
@@ -145,6 +179,8 @@ export function App() {
 				Pink-marked eras have been scanned. Scanning reads all ~14,400 relay headers of an era (about a
 				minute) and is kept in this browser.
 			</p>
+
+			{settingsDialog}
 
 			{scanError && (
 				<p className="alert" role="alert">

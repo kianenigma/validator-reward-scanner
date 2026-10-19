@@ -1,0 +1,24 @@
+{
+  "version": 0,
+  "descriptorPath": ".papi/descriptors",
+  "entries": {
+    "dot": {
+      "wsUrl": "wss://rpc.polkadot.io",
+      "metadata": ".papi/metadata/dot.scale",
+      "genesis": "0x91b171bb158e2d3848fa23a9f1c25182fb8e20313b2c1eb49219da7a70ce90c3",
+      "codeHash": "0x7ad43783c5d3dd211cc144ce3a6d6d63e0f13cebd5438261d683ce2d5c7a97cc"
+    },
+    "pah": {
+      "wsUrl": "wss://polkadot-asset-hub-rpc.polkadot.io",
+      "metadata": ".papi/metadata/pah.scale",
+      "genesis": "0x68d56f15f85d3136970ec16946040bc1752654e906147f7e43e9d539d7c3de2f",
+      "codeHash": "0x0650668230cfa2959b745688f178cd9c85926f16477e8620e2b621ec286644f3"
+    },
+    "dotPeople": {
+      "wsUrl": "wss://polkadot-people-rpc.polkadot.io",
+      "metadata": ".papi/metadata/dotPeople.scale",
+      "genesis": "0x67fa177a097bfa18f77ea95ab56e9bcdfeb0e5b8a40e46298bb93e16b6fc5008",
+      "codeHash": "0xc0f0bfb48cbeab25d02e268579e178ca5e2226a37e38916f14a82e61261a44e8"
+    }
+  }
+}

@@ -27,6 +27,12 @@ export interface Overview {
 	activeEraStartSession: number;
 	/** Concluded eras still holding reward points, newest first. */
 	eras: EraPoints[];
+	/** The running era, once at least one of its sessions has been reported to Asset Hub. */
+	current: EraPoints | null;
+	/** First session not yet reported to Asset Hub; `current` holds the points before it. */
+	currentEndSession: number;
+	/** When this overview was read, in ms since the epoch. */
+	readAt: number;
 	tokenDecimals: number;
 }
 

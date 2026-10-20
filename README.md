@@ -1,6 +1,6 @@
 # Validator Reward Scanner
 
-Single-page dashboard of Polkadot validator era points for concluded eras, split into relay chain
+Single-page dashboard of Polkadot validator era points, split into relay chain
 block authorship and parachain consensus (backing, plus rare dispute statements).
 
 - Era points: `Staking::ErasRewardPoints` on Asset Hub (all eras still held, ~84).
@@ -20,7 +20,10 @@ block authorship and parachain consensus (backing, plus rare dispute statements)
     Validators without points get nothing.
 - Identities from the People chain.
 
-Scans take about a minute per era and are cached in IndexedDB.
+Scans take about a minute per era and are cached in IndexedDB. "Scan current era" re-reads Asset Hub
+and scans the running era up to its last session reported to Asset Hub
+(`StakingRcClient::LastSessionReportEndingIndex`), so it lags the relay chain by up to a session.
+Such scans are not cached, and the era has no DOT figures until it ends.
 
 The Connections dialog sets the RPC endpoints of each chain, or reads Asset Hub and the People
 chain through an in-browser smoldot light client. The relay chain always goes over RPC and must

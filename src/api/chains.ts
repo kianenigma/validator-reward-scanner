@@ -69,6 +69,8 @@ function get(): Promise<Clients> {
 
 export const relayClient = async () => (await get()).relay;
 export const ahApi = async () => (await get()).ah.getTypedApi(pah);
+/** Hash of Asset Hub's finalized block, to read several storage items at one consistent state. */
+export const ahFinalizedHash = async () => (await (await get()).ah.getFinalizedBlock()).hash;
 export const peopleApi = async () => (await get()).people.getTypedApi(dotPeople);
 export const relayApi = async () => (await get()).relay.getTypedApi(dot);
 

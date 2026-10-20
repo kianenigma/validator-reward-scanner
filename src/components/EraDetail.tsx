@@ -81,6 +81,7 @@ export function EraDetail({ era, overview, scan, names, weights, job, queued, on
 	const endSession = endSessionOf(era, overview);
 	const anomalies = rows.filter((r) => r.otherPoints !== null && r.otherPoints < 0).length;
 	const u32Share = era.totalPoints / U32_MAX;
+	const live = era.era === overview.activeEra;
 
 	const amount = (planck: bigint | null) => (planck === null ? "…" : dotAmount(planck, overview.tokenDecimals, 2));
 
@@ -103,15 +104,15 @@ export function EraDetail({ era, overview, scan, names, weights, job, queued, on
 			<section className="hero" aria-live="polite">
 				{authorTotal !== null && otherTotal !== null ? (
 					<h2 className="headline">
-						In era {era.era}, authoring relay blocks earned{" "}
+						In era {era.era}{live ? " so far" : ""}, authoring relay blocks earned{" "}
 						<span className="figure author-ink">{pct(authorTotal, era.totalPoints)}</span> of the{" "}
 						<span className="figure">{fmt(era.totalPoints)}</span> points. Parachain consensus earned the
 						other <span className="figure other-ink">{pct(otherTotal, era.totalPoints)}</span>.
 					</h2>
 				) : (
 					<h2 className="headline">
-						Era {era.era} issued <span className="figure">{fmt(era.totalPoints)}</span> points to{" "}
-						<span className="figure">{fmt(era.individual.length)}</span> validators.
+						Era {era.era} {live ? "has issued" : "issued"} <span className="figure">{fmt(era.totalPoints)}</span>{" "}
+						points to <span className="figure">{fmt(era.individual.length)}</span> validators{live ? " so far" : ""}.
 					</h2>
 				)}
 
@@ -170,6 +171,15 @@ export function EraDetail({ era, overview, scan, names, weights, job, queued, on
 					<dt>Average per validator</dt>
 					<dd>{fmt(Math.round(era.totalPoints / Math.max(1, era.individual.length)))}</dd>
 				</div>
+				{live && (
+					<div>
+						<dt>Rewards</dt>
+						<dd>
+							Not set yet
+							<small>Both DOT pots are snapshotted when the era ends</small>
+						</dd>
+					</div>
+				)}
 				{era.validatorReward !== null && (
 					<div>
 						<dt>Staker rewards pot</dt>
@@ -196,6 +206,12 @@ export function EraDetail({ era, overview, scan, names, weights, job, queued, on
 					<dd>
 						{era.startSession}–{endSession - 1}
 						{era.startSessionInferred && <small>Inferred: older than Staking.BondedEras</small>}
+						{live && (
+							<small>
+								Reported to Asset Hub by {new Date(overview.readAt).toLocaleTimeString()}; the era is still
+								running
+							</small>
+						)}
 					</dd>
 				</div>
 				<div>

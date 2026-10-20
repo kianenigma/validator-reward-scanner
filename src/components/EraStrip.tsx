@@ -12,17 +12,19 @@ interface Props {
 	job: ScanJob | null;
 }
 
-/** Every concluded era, oldest to newest, as a selectable timeline. */
+/** Every era, oldest to newest, as a selectable timeline; the running one last. */
 export function EraStrip({ overview, scans, selected, onSelect, queue, job }: Props) {
 	const eras = [...overview.eras].reverse();
+	if (overview.current) eras.push(overview.current);
 	return (
-		<nav className="strip" aria-label="Concluded eras">
+		<nav className="strip" aria-label="Eras">
 			{eras.map((e) => {
 				const scan = scans.get(e.era);
 				const isJob = job?.era === e.era;
+				const live = e.era === overview.activeEra;
 				const state = scan ? "scanned" : isJob ? "scanning" : queue.includes(e.era) ? "queued" : "idle";
 				const tip = [
-					`Era ${e.era}${e.startSessionInferred ? " (session range inferred)" : ""}`,
+					`Era ${e.era}${live ? ", running" : ""}${e.startSessionInferred ? " (session range inferred)" : ""}`,
 					`${fmt(e.totalPoints)} points`,
 					scan
 						? `${pct((scan.toBlock - scan.fromBlock) * POINTS_PER_BLOCK, e.totalPoints)} from authorship`
@@ -35,7 +37,7 @@ export function EraStrip({ overview, scans, selected, onSelect, queue, job }: Pr
 				return (
 					<button
 						key={e.era}
-						className={`chip ${state} ${e.era === selected ? "selected" : ""}`}
+						className={`chip ${state} ${live ? "live" : ""} ${e.era === selected ? "selected" : ""}`}
 						title={tip}
 						aria-pressed={e.era === selected}
 						onClick={() => onSelect(e.era)}

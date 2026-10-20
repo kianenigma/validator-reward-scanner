@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { endSessionOf, fetchIdentities, fetchIncentiveWeights, fetchOverview, scanEra } from "../api/eras";
+import { endSessionOf, fetchIdentities, fetchIncentiveWeights, fetchOverview, findEra, scanEra } from "../api/eras";
 import { deleteScan, loadScans, saveScan } from "../cache";
 import type { EraScan, Overview } from "../types";
 import { EraStrip } from "./EraStrip";
@@ -74,7 +74,7 @@ export function App() {
 	// Incentive weights are ~600 entries per era, so they are read only for the era on screen.
 	useEffect(() => {
 		if (selected === null || weights.has(selected)) return;
-		if (!overview?.eras.find((e) => e.era === selected)?.incentive) return;
+		if (!overview || !findEra(overview, selected)?.incentive) return;
 		fetchIncentiveWeights(selected)
 			.then((w) => setWeights((m) => new Map(m).set(selected, w)))
 			.catch((e) => console.warn(`incentive weights of era ${selected} unavailable`, e));
@@ -84,7 +84,7 @@ export function App() {
 	useEffect(() => {
 		if (!overview || running.current || queue.length === 0) return;
 		const eraNo = queue[0];
-		const era = overview.eras.find((e) => e.era === eraNo);
+		const era = findEra(overview, eraNo);
 		if (!era) {
 			setQueue((q) => q.slice(1));
 			return;
@@ -94,7 +94,8 @@ export function App() {
 		setJob({ era: eraNo, msg: "Starting…", frac: 0 });
 		scanEra(era, endSessionOf(era, overview), (msg, frac) => setJob({ era: eraNo, msg, frac }))
 			.then((scan) => {
-				saveScan(scan);
+				// The running era gains sessions until it ends, so its scan is only good for this visit.
+				if (eraNo !== overview.activeEra) saveScan(scan);
 				setScans((m) => new Map(m).set(eraNo, scan));
 			})
 			.catch((e) => setScanError(`Scanning era ${eraNo} failed: ${e instanceof Error ? e.message : String(e)}`))
@@ -118,6 +119,33 @@ export function App() {
 		});
 		setQueue((q) => (q.includes(era) ? q : [...q, era]));
 	}, []);
+
+	// Re-reads Asset Hub for the sessions reported since, then scans the running era afresh.
+	const [refreshing, setRefreshing] = useState(false);
+	const scanCurrent = useCallback(async () => {
+		setRefreshing(true);
+		setScanError(null);
+		try {
+			const ov = await fetchOverview(() => {});
+			// If the era rolled over meanwhile, the old running era's partial scan no longer covers it.
+			const previous = overview?.activeEra;
+			if (previous !== undefined && previous !== ov.activeEra) {
+				setScans((m) => {
+					const next = new Map(m);
+					next.delete(previous);
+					return next;
+				});
+			}
+			setOverview(ov);
+			setSelected(ov.activeEra);
+			if (ov.current) rescan(ov.activeEra);
+			else setScanError(`Era ${ov.activeEra} just started: Asset Hub has not received any of its session reports yet.`);
+		} catch (e) {
+			setScanError(`Reading the current era failed: ${e instanceof Error ? e.message : String(e)}`);
+		} finally {
+			setRefreshing(false);
+		}
+	}, [overview, rescan]);
 
 	if (error) {
 		return (
@@ -148,7 +176,8 @@ export function App() {
 		);
 	}
 
-	const era = overview.eras.find((e) => e.era === selected) ?? null;
+	const era = selected === null ? null : findEra(overview, selected);
+	const currentBusy = refreshing || job?.era === overview.activeEra || queue.includes(overview.activeEra);
 	const unscanned = overview.eras.filter((e) => !scans.has(e.era) && !queue.includes(e.era)).map((e) => e.era);
 	return (
 		<main>
@@ -157,12 +186,16 @@ export function App() {
 					<h1 className="wordmark">Validator rewards</h1>
 					<p className="lede">
 						Where Polkadot validators' era points come from: authoring relay chain blocks, or parachain
-						consensus. Concluded eras only; era {overview.activeEra} is still running.
+						consensus. Era {overview.activeEra} is still running and counts only the sessions reported so
+						far.
 					</p>
 				</div>
 				<div className="masthead-actions">
 					<button className="btn" disabled={unscanned.length === 0} onClick={() => enqueue(unscanned.slice(0, 7))}>
 						Scan the 7 latest eras
+					</button>
+					<button className="btn" disabled={currentBusy} onClick={scanCurrent}>
+						{refreshing ? "Reading era…" : `Scan current era (${overview.activeEra})`}
 					</button>
 					<button className="btn" onClick={() => setSettingsOpen(true)}>
 						Connections{settings.source === "smoldot" ? ": smoldot" : ""}
@@ -208,7 +241,7 @@ export function App() {
 					job={job?.era === era.era ? job : null}
 					queued={queue.includes(era.era)}
 					onScan={() => enqueue([era.era])}
-					onRescan={() => rescan(era.era)}
+					onRescan={() => (era.era === overview.activeEra ? scanCurrent() : rescan(era.era))}
 				/>
 			)}
 		</main>

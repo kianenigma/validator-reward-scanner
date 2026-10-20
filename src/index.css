@@ -171,6 +171,20 @@ body {
 	transition: width 0.4s linear;
 }
 .chip.selected { background: var(--ink); color: var(--surface); }
+/* The running era: a pulsing dot, since its points still grow */
+.chip.live::before {
+	content: "";
+	display: inline-block;
+	width: 6px;
+	height: 6px;
+	margin-right: 4px;
+	border-radius: 50%;
+	background: var(--other);
+	vertical-align: 1px;
+	animation: live-pulse 2s ease-in-out infinite;
+}
+@keyframes live-pulse { 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { .chip.live::before { animation: none; } }
 .strip-note {
 	color: var(--faint);
 	font-size: 0.82rem;

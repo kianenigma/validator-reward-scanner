@@ -1,17 +1,20 @@
-import { ahApi, peopleApi, SESSIONS_PER_ERA } from "./chains";
+import { ahApi, ahFinalizedHash, peopleApi, SESSIONS_PER_ERA } from "./chains";
 import { firstBlockOfSession, scanAuthors, sessionTip, sessionValidatorsAt } from "./relay";
 import type { EraIncentive, EraPoints, EraScan, Overview, SessionRange } from "../types";
 
 /**
- * Reward points of every concluded era that Asset Hub still holds.
+ * Reward points of every era that Asset Hub still holds, including the running one.
  *
  * Asset Hub credits the relay's report for session `s` to the era active when it arrives, and only
  * then may start the next era at session `s + 1`. So era `e` holds the points of relay sessions
- * `[start(e), start(e + 1))`, with `start` from `Staking::BondedEras`.
+ * `[start(e), start(e + 1))`, with `start` from `Staking::BondedEras`, and the running era holds
+ * those up to the last session report received.
  */
-export async function fetchOverview(onProgress: (msg: string) => void): Promise<Overview> {
+export async function fetchOverview(onProgress: (msg: string) => void, at?: string): Promise<Overview> {
 	const api = await ahApi();
 	onProgress("Reading staking state from Asset Hub...");
+	// One block for all reads, so the running era's points match its last reported session.
+	const opts = { at: at ?? (await ahFinalizedHash()) };
 	const [
 		active,
 		bonded,
@@ -21,15 +24,17 @@ export async function fetchOverview(onProgress: (msg: string) => void): Promise<
 		sumWeightEntries,
 		sumWeightedPointsEntries,
 		weightedPointsStart,
+		lastReportedSession,
 	] = await Promise.all([
-		api.query.Staking.ActiveEra.getValue(),
-		api.query.Staking.BondedEras.getValue(),
-		api.query.Staking.ErasRewardPoints.getEntries(),
-		api.query.Staking.ErasValidatorReward.getEntries(),
-		api.query.Staking.ErasValidatorIncentiveBudget.getEntries(),
-		api.query.Staking.ErasSumValidatorIncentiveWeight.getEntries(),
-		api.query.Staking.ErasSumWeightedPoints.getEntries(),
-		api.query.Staking.WeightedPointsFormulaStartEra.getValue(),
+		api.query.Staking.ActiveEra.getValue(opts),
+		api.query.Staking.BondedEras.getValue(opts),
+		api.query.Staking.ErasRewardPoints.getEntries(opts),
+		api.query.Staking.ErasValidatorReward.getEntries(opts),
+		api.query.Staking.ErasValidatorIncentiveBudget.getEntries(opts),
+		api.query.Staking.ErasSumValidatorIncentiveWeight.getEntries(opts),
+		api.query.Staking.ErasSumWeightedPoints.getEntries(opts),
+		api.query.Staking.WeightedPointsFormulaStartEra.getValue(opts),
+		api.query.StakingRcClient.LastSessionReportEndingIndex.getValue(opts),
 	]);
 	if (!active) throw new Error("Staking.ActiveEra is empty");
 	if (bonded.length === 0) throw new Error("Staking.BondedEras is empty");
@@ -54,8 +59,8 @@ export async function fetchOverview(onProgress: (msg: string) => void): Promise<
 		return { budget, weighted, denominator };
 	};
 
-	const eras: EraPoints[] = pointEntries
-		.filter(({ keyArgs }) => keyArgs[0] < active.index)
+	const all: EraPoints[] = pointEntries
+		.filter(({ keyArgs }) => keyArgs[0] <= active.index)
 		.map(({ keyArgs: [era], value }) => {
 			const known = startOf.get(era);
 			return {
@@ -74,11 +79,30 @@ export async function fetchOverview(onProgress: (msg: string) => void): Promise<
 	// active one starts.
 	const activeEraStartSession = startOf.get(active.index);
 	if (activeEraStartSession === undefined) throw new Error("active era missing from BondedEras");
-	return { activeEra: active.index, activeEraStartSession, eras, tokenDecimals: 10 };
+	const reportedEndSession = (lastReportedSession ?? -1) + 1;
+	// Until a session of the running era is reported it has no points to explain.
+	const current =
+		reportedEndSession > activeEraStartSession ? (all.find((e) => e.era === active.index) ?? null) : null;
+	return {
+		activeEra: active.index,
+		activeEraStartSession,
+		eras: all.filter((e) => e.era < active.index),
+		current,
+		currentEndSession: reportedEndSession,
+		readAt: Date.now(),
+		tokenDecimals: 10,
+	};
 }
 
-/** The first session after `era`, i.e. the start of `era + 1`. */
+/** A concluded era, or the running one. */
+export function findEra(overview: Overview, era: number): EraPoints | null {
+	if (overview.current?.era === era) return overview.current;
+	return overview.eras.find((e) => e.era === era) ?? null;
+}
+
+/** The first session after `era`, i.e. the start of `era + 1`; for the running era, the first unreported one. */
 export function endSessionOf(era: EraPoints, overview: Overview): number {
+	if (era.era === overview.activeEra) return overview.currentEndSession;
 	const next = overview.eras.find((e) => e.era === era.era + 1);
 	if (next) return next.startSession;
 	if (era.era + 1 === overview.activeEra) return overview.activeEraStartSession;

@@ -1,6 +1,6 @@
 // Scans one era end to end and cross-checks the result against Asset Hub's era points.
-// Usage: bun scripts/check-era.ts [era]
-import { fetchOverview, scanEra, endSessionOf } from "../src/api/eras";
+// Usage: bun scripts/check-era.ts [era | current]
+import { fetchOverview, findEra, scanEra, endSessionOf } from "../src/api/eras";
 import { destroyClients, relayApi, POINTS_PER_BLOCK } from "../src/api/chains";
 import { blockHash, sessionValidatorsAt, finalizedNumber } from "../src/api/relay";
 
@@ -13,7 +13,9 @@ if (typed.join() !== raw.join()) throw new Error("raw Session.Validators decode 
 console.log(`raw storage decode ok (${raw.length} validators)`);
 
 const ov = await fetchOverview(console.log);
-const era = ov.eras.find((e) => e.era === Number(process.argv[2] ?? ov.eras[0].era))!;
+const arg = process.argv[2];
+const era = arg === "current" ? ov.current : findEra(ov, Number(arg ?? ov.eras[0].era));
+if (!era) throw new Error(arg === "current" ? "no session of the running era reported yet" : `era ${arg} not held`);
 console.log(`era ${era.era}: sessions from ${era.startSession}${era.startSessionInferred ? " (inferred)" : ""}, total ${era.totalPoints}`);
 let last = 0;
 const scan = await scanEra(era, endSessionOf(era, ov), (m, f) => { if (f - last > 0.1 || f === 1) { console.log(m); last = f; } });

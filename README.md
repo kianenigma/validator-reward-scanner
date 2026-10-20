@@ -11,6 +11,13 @@ block authorship and parachain consensus (backing, plus rare dispute statements)
   mapped through `Session::Validators` of that session. Each block is 20 points
   (`StakingAhClient::PointsPerBlock`); the rest of a validator's points are parachain consensus
   (20 per backed candidate).
+- DOT per validator, from the two staking budgets of the DAP (`Dap::BudgetAllocation`):
+  - Staker rewards: the era's `Staking::ErasValidatorReward` split pro rata by points, paid to the
+    validator and its nominators together, before commission.
+  - Self-stake incentive: the era's `Staking::ErasValidatorIncentiveBudget`, paid to the validator
+    alone. Each share is `ErasValidatorIncentiveWeight × points / ErasSumWeightedPoints`, or
+    `weight / ErasSumValidatorIncentiveWeight` for eras before `WeightedPointsFormulaStartEra`.
+    Validators without points get nothing.
 - Identities from the People chain.
 
 Scans take about a minute per era and are cached in IndexedDB.

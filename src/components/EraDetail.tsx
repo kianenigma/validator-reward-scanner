@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { POINTS_PER_BACKING, POINTS_PER_BLOCK } from "../api/chains";
-import { endSessionOf } from "../api/eras";
-import { dot, fmt, pct, short, U32_MAX } from "../format";
+import { endSessionOf, incentiveOf } from "../api/eras";
+import { dot, dotAmount, fmt, pct, short, U32_MAX } from "../format";
 import type { EraPoints, EraScan, Overview, ValidatorRow } from "../types";
 import type { ScanJob } from "./App";
 
@@ -10,13 +10,15 @@ interface Props {
 	overview: Overview;
 	scan: EraScan | null;
 	names: Map<string, string>;
+	/** stash -> self-stake incentive weight, null while loading. */
+	weights: Map<string, bigint> | null;
 	job: ScanJob | null;
 	queued: boolean;
 	onScan: () => void;
 	onRescan: () => void;
 }
 
-type SortKey = "points" | "blocks" | "authorPoints" | "otherPoints" | "authorShare" | "otherShare";
+type SortKey = "points" | "reward" | "incentive" | "totalDot" | "blocks" | "authorPoints" | "otherPoints" | "authorShare" | "otherShare";
 
 function SplitBar({ author, other, scale, title }: { author: number; other: number; scale: number; title?: string }) {
 	return (
@@ -27,7 +29,7 @@ function SplitBar({ author, other, scale, title }: { author: number; other: numb
 	);
 }
 
-export function EraDetail({ era, overview, scan, names, job, queued, onScan, onRescan }: Props) {
+export function EraDetail({ era, overview, scan, names, weights, job, queued, onScan, onRescan }: Props) {
 	const [sort, setSort] = useState<{ key: SortKey; desc: boolean }>({ key: "points", desc: true });
 	const [filter, setFilter] = useState("");
 
@@ -39,16 +41,24 @@ export function EraDetail({ era, overview, scan, names, job, queued, onScan, onR
 			const p = points.get(stash) ?? 0;
 			const blocks = scan ? (scan.authored[stash] ?? 0) : null;
 			const authorPoints = blocks === null ? null : blocks * POINTS_PER_BLOCK;
+			const reward =
+				era.validatorReward === null || era.totalPoints === 0
+					? null
+					: (era.validatorReward * BigInt(p)) / BigInt(era.totalPoints);
+			const incentive = !era.incentive ? 0n : weights ? incentiveOf(era.incentive, weights.get(stash) ?? 0n, p) : null;
 			return {
 				stash,
 				name: names.get(stash) ?? null,
 				points: p,
+				reward,
+				incentive,
+				totalDot: reward === null || incentive === null ? null : reward + incentive,
 				blocks,
 				authorPoints,
 				otherPoints: authorPoints === null ? null : p - authorPoints,
 			};
 		});
-	}, [era, scan, names]);
+	}, [era, scan, names, weights]);
 
 	const visible = useMemo(() => {
 		const q = filter.trim().toLowerCase();
@@ -58,7 +68,7 @@ export function EraDetail({ era, overview, scan, names, job, queued, onScan, onR
 				? share(r.authorPoints, r.points)
 				: sort.key === "otherShare"
 					? share(r.otherPoints, r.points)
-					: (r[sort.key] ?? 0);
+					: Number(r[sort.key] ?? 0);
 		return rows
 			.filter((r) => !q || r.stash.toLowerCase().includes(q) || r.name?.toLowerCase().includes(q))
 			.sort((a, b) => (sort.desc ? value(b) - value(a) : value(a) - value(b)));
@@ -71,6 +81,8 @@ export function EraDetail({ era, overview, scan, names, job, queued, onScan, onR
 	const endSession = endSessionOf(era, overview);
 	const anomalies = rows.filter((r) => r.otherPoints !== null && r.otherPoints < 0).length;
 	const u32Share = era.totalPoints / U32_MAX;
+
+	const amount = (planck: bigint | null) => (planck === null ? "…" : dotAmount(planck, overview.tokenDecimals, 2));
 
 	const th = (key: SortKey, label: string) => (
 		<th className="num" aria-sort={sort.key === key ? (sort.desc ? "descending" : "ascending") : "none"}>
@@ -160,8 +172,23 @@ export function EraDetail({ era, overview, scan, names, job, queued, onScan, onR
 				</div>
 				{era.validatorReward !== null && (
 					<div>
-						<dt>Validator payout pot</dt>
-						<dd>{dot(era.validatorReward, overview.tokenDecimals)}</dd>
+						<dt>Staker rewards pot</dt>
+						<dd>
+							{dot(era.validatorReward, overview.tokenDecimals)}
+							<small>Split by points, shared with nominators</small>
+						</dd>
+					</div>
+				)}
+				{era.incentive && (
+					<div>
+						<dt>Self-stake incentive pot</dt>
+						<dd>
+							{dot(era.incentive.budget, overview.tokenDecimals)}
+							<small>
+								Split by self-stake weight{era.incentive.weighted ? " × points" : " only (pre-cutoff era)"}, to
+								the validator
+							</small>
+						</dd>
 					</div>
 				)}
 				<div>
@@ -221,6 +248,9 @@ export function EraDetail({ era, overview, scan, names, job, queued, onScan, onR
 								<th>Validator</th>
 								{th("points", "Points")}
 								<th className="num">Of era</th>
+								{era.validatorReward !== null && th("reward", "Staker DOT")}
+								{era.incentive && th("incentive", "Incentive DOT")}
+								{era.validatorReward !== null && era.incentive && th("totalDot", "Total DOT")}
 								{th("blocks", "Blocks")}
 								{th("authorPoints", "Authoring")}
 								{th("authorShare", "%")}
@@ -239,6 +269,19 @@ export function EraDetail({ era, overview, scan, names, job, queued, onScan, onR
 									</td>
 									<td className="num strong">{fmt(r.points)}</td>
 									<td className="num">{pct(r.points, era.totalPoints, 3)}</td>
+									{era.validatorReward !== null && (
+										<td className="num" title="Staker rewards: paid to the validator and its nominators, before commission">
+											{amount(r.reward)}
+										</td>
+									)}
+									{era.incentive && (
+										<td className="num" title="Self-stake incentive: paid to the validator only">
+											{amount(r.incentive)}
+										</td>
+									)}
+									{era.validatorReward !== null && era.incentive && (
+										<td className="num strong">{amount(r.totalDot)}</td>
+									)}
 									<td className="num">{r.blocks === null ? "–" : fmt(r.blocks)}</td>
 									<td className="num">{r.authorPoints === null ? "–" : fmt(r.authorPoints)}</td>
 									<td className="num soft">{r.authorPoints === null ? "–" : pct(r.authorPoints, r.points)}</td>

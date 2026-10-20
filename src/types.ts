@@ -1,3 +1,13 @@
+/** The self-stake incentive pot of one era, from `Staking::ErasValidatorIncentiveBudget`. */
+export interface EraIncentive {
+	/** Planck. */
+	budget: bigint;
+	/** True if shares are `weight × points`, false for the legacy stake-only `weight`. */
+	weighted: boolean;
+	/** `ErasSumWeightedPoints` if `weighted`, else `ErasSumValidatorIncentiveWeight`. */
+	denominator: bigint;
+}
+
 export interface EraPoints {
 	era: number;
 	/** First relay session whose points were credited to this era. */
@@ -5,8 +15,9 @@ export interface EraPoints {
 	/** True if `startSession` was extrapolated because the era is older than `BondedEras`. */
 	startSessionInferred: boolean;
 	totalPoints: number;
-	/** Validator payout pot of the era in planck, if recorded. */
+	/** Staker reward pot of the era in planck (`Staking::ErasValidatorReward`), if recorded. */
 	validatorReward: bigint | null;
+	incentive: EraIncentive | null;
 	/** `[stash, points]`, as stored in `Staking::ErasRewardPoints`. */
 	individual: [string, number][];
 }
@@ -42,6 +53,12 @@ export interface ValidatorRow {
 	stash: string;
 	name: string | null;
 	points: number;
+	/** Staker rewards of the validator and its nominators in planck: the pot split pro rata by points. */
+	reward: bigint | null;
+	/** Self-stake incentive of the validator in planck; null while its weight is loading. */
+	incentive: bigint | null;
+	/** `reward + incentive`, once both are known. */
+	totalDot: bigint | null;
 	blocks: number | null;
 	authorPoints: number | null;
 	/** Points not explained by authorship: parachain backing, plus rare dispute statements. */

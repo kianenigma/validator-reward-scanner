@@ -1,6 +1,6 @@
 import { ahApi, peopleApi, SESSIONS_PER_ERA } from "./chains";
 import { firstBlockOfSession, scanAuthors, sessionTip, sessionValidatorsAt } from "./relay";
-import type { EraPoints, EraScan, Overview, SessionRange } from "../types";
+import type { EraIncentive, EraPoints, EraScan, Overview, SessionRange } from "../types";
 
 /**
  * Reward points of every concluded era that Asset Hub still holds.
@@ -12,18 +12,47 @@ import type { EraPoints, EraScan, Overview, SessionRange } from "../types";
 export async function fetchOverview(onProgress: (msg: string) => void): Promise<Overview> {
 	const api = await ahApi();
 	onProgress("Reading staking state from Asset Hub...");
-	const [active, bonded, pointEntries, rewardEntries] = await Promise.all([
+	const [
+		active,
+		bonded,
+		pointEntries,
+		rewardEntries,
+		incentiveEntries,
+		sumWeightEntries,
+		sumWeightedPointsEntries,
+		weightedPointsStart,
+	] = await Promise.all([
 		api.query.Staking.ActiveEra.getValue(),
 		api.query.Staking.BondedEras.getValue(),
 		api.query.Staking.ErasRewardPoints.getEntries(),
 		api.query.Staking.ErasValidatorReward.getEntries(),
+		api.query.Staking.ErasValidatorIncentiveBudget.getEntries(),
+		api.query.Staking.ErasSumValidatorIncentiveWeight.getEntries(),
+		api.query.Staking.ErasSumWeightedPoints.getEntries(),
+		api.query.Staking.WeightedPointsFormulaStartEra.getValue(),
 	]);
 	if (!active) throw new Error("Staking.ActiveEra is empty");
 	if (bonded.length === 0) throw new Error("Staking.BondedEras is empty");
 
 	const startOf = new Map(bonded.map(([era, session]) => [era, session]));
 	const [oldestEra, oldestSession] = bonded[0];
-	const rewards = new Map(rewardEntries.map(({ keyArgs, value }) => [keyArgs[0], value]));
+	const byEra = (entries: { keyArgs: [number]; value: bigint }[]) =>
+		new Map(entries.map(({ keyArgs, value }) => [keyArgs[0], value]));
+	const rewards = byEra(rewardEntries);
+	const incentives = byEra(incentiveEntries);
+	const sumWeights = byEra(sumWeightEntries);
+	const sumWeightedPoints = byEra(sumWeightedPointsEntries);
+
+	// See `calculate_validator_incentive_for_page` in pallet-staking-async: eras from the cutoff on
+	// share the pot by `weight × points`, older ones by `weight` alone. No cutoff recorded means
+	// every era is weighted.
+	const incentiveOf = (era: number): EraIncentive | null => {
+		const budget = incentives.get(era);
+		if (!budget) return null;
+		const weighted = weightedPointsStart === undefined || era >= weightedPointsStart;
+		const denominator = (weighted ? sumWeightedPoints : sumWeights).get(era) ?? 0n;
+		return { budget, weighted, denominator };
+	};
 
 	const eras: EraPoints[] = pointEntries
 		.filter(({ keyArgs }) => keyArgs[0] < active.index)
@@ -35,6 +64,7 @@ export async function fetchOverview(onProgress: (msg: string) => void): Promise<
 				startSessionInferred: known === undefined,
 				totalPoints: value.total,
 				validatorReward: rewards.get(era) ?? null,
+				incentive: incentiveOf(era),
 				individual: value.individual.map(([stash, p]) => [stash, p] as [string, number]),
 			};
 		})
@@ -92,6 +122,23 @@ export async function scanEra(
 	});
 
 	return { era: era.era, fromBlock: from, toBlock: to, sessions, authored, scannedAt: Date.now() };
+}
+
+/** stash -> self-stake incentive weight of every validator elected for `era`. */
+export async function fetchIncentiveWeights(era: number): Promise<Map<string, bigint>> {
+	const api = await ahApi();
+	const entries = await api.query.Staking.ErasValidatorIncentiveWeight.getEntries(era);
+	return new Map(entries.map(({ keyArgs, value }) => [keyArgs[1], value]));
+}
+
+/**
+ * The self-stake incentive `stash` is owed for an era, before the per-page rounding of payout.
+ * Validators without era points are not paid.
+ */
+export function incentiveOf(incentive: EraIncentive, weight: bigint, points: number): bigint {
+	if (points === 0 || weight === 0n || incentive.denominator === 0n) return 0n;
+	const numerator = incentive.weighted ? weight * BigInt(points) : weight;
+	return (incentive.budget * numerator) / incentive.denominator;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

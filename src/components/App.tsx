@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { endSessionOf, fetchIdentities, fetchOverview, scanEra } from "../api/eras";
+import { endSessionOf, fetchIdentities, fetchIncentiveWeights, fetchOverview, scanEra } from "../api/eras";
 import { deleteScan, loadScans, saveScan } from "../cache";
 import type { EraScan, Overview } from "../types";
 import { EraStrip } from "./EraStrip";
@@ -28,6 +28,7 @@ export function App() {
 	const [scans, setScans] = useState<Map<number, EraScan>>(new Map());
 	const [names, setNames] = useState<Map<string, string>>(new Map());
 	const [selected, setSelected] = useState<number | null>(null);
+	const [weights, setWeights] = useState<Map<number, Map<string, bigint>>>(new Map());
 	const [queue, setQueue] = useState<number[]>([]);
 	const [job, setJob] = useState<ScanJob | null>(null);
 	const [scanError, setScanError] = useState<string | null>(null);
@@ -69,6 +70,15 @@ export function App() {
 			}
 		})();
 	}, []);
+
+	// Incentive weights are ~600 entries per era, so they are read only for the era on screen.
+	useEffect(() => {
+		if (selected === null || weights.has(selected)) return;
+		if (!overview?.eras.find((e) => e.era === selected)?.incentive) return;
+		fetchIncentiveWeights(selected)
+			.then((w) => setWeights((m) => new Map(m).set(selected, w)))
+			.catch((e) => console.warn(`incentive weights of era ${selected} unavailable`, e));
+	}, [overview, selected, weights]);
 
 	// Scans run one at a time: each already fans out into dozens of concurrent RPC calls.
 	useEffect(() => {
@@ -194,6 +204,7 @@ export function App() {
 					overview={overview}
 					scan={scans.get(era.era) ?? null}
 					names={names}
+					weights={weights.get(era.era) ?? null}
 					job={job?.era === era.era ? job : null}
 					queued={queue.includes(era.era)}
 					onScan={() => enqueue([era.era])}

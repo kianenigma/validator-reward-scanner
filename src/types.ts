@@ -31,6 +31,8 @@ export interface Overview {
 	current: EraPoints | null;
 	/** First session not yet reported to Asset Hub; `current` holds the points before it. */
 	currentEndSession: number;
+	/** `Dap::BudgetAllocation`: each budget's share of issuance in parts per billion, by budget key. */
+	allocation: Record<string, number>;
 	/** When this overview was read, in ms since the epoch. */
 	readAt: number;
 	tokenDecimals: number;

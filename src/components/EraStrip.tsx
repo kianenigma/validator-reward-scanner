@@ -28,11 +28,13 @@ export function EraStrip({ overview, scans, selected, onSelect, queue, job }: Pr
 					`${fmt(e.totalPoints)} points`,
 					scan
 						? `${pct((scan.toBlock - scan.fromBlock) * POINTS_PER_BLOCK, e.totalPoints)} from authorship`
-						: isJob
-							? "Scanning…"
-							: queue.includes(e.era)
-								? "Queued"
-								: "Not scanned",
+						: live
+							? "Scannable once it ends"
+							: isJob
+								? "Scanning…"
+								: queue.includes(e.era)
+									? "Queued"
+									: "Not scanned",
 				].join("\n");
 				return (
 					<button

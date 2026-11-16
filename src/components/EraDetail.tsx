@@ -135,7 +135,11 @@ export function EraDetail({ era, overview, scan, names, weights, job, queued, on
 
 				{!scan && (
 					<div className="scan-cta">
-						{job ? (
+						{live ? (
+							<span className="muted">
+								Era {era.era} is still running, so its relay blocks can be counted once it ends.
+							</span>
+						) : job ? (
 							<div className="progress" role="status">
 								<div className="progress-track">
 									<span style={{ width: `${job.frac * 100}%` }} />
@@ -227,6 +231,8 @@ export function EraDetail({ era, overview, scan, names, weights, job, queued, on
 									</button>
 								</small>
 							</>
+						) : live ? (
+							"After the era ends"
 						) : (
 							"Not scanned"
 						)}

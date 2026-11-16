@@ -25,6 +25,7 @@ export async function fetchOverview(onProgress: (msg: string) => void, at?: stri
 		sumWeightedPointsEntries,
 		weightedPointsStart,
 		lastReportedSession,
+		allocation,
 	] = await Promise.all([
 		api.query.Staking.ActiveEra.getValue(opts),
 		api.query.Staking.BondedEras.getValue(opts),
@@ -35,6 +36,7 @@ export async function fetchOverview(onProgress: (msg: string) => void, at?: stri
 		api.query.Staking.ErasSumWeightedPoints.getEntries(opts),
 		api.query.Staking.WeightedPointsFormulaStartEra.getValue(opts),
 		api.query.StakingRcClient.LastSessionReportEndingIndex.getValue(opts),
+		api.query.Dap.BudgetAllocation.getValue(opts),
 	]);
 	if (!active) throw new Error("Staking.ActiveEra is empty");
 	if (bonded.length === 0) throw new Error("Staking.BondedEras is empty");
@@ -89,6 +91,7 @@ export async function fetchOverview(onProgress: (msg: string) => void, at?: stri
 		eras: all.filter((e) => e.era < active.index),
 		current,
 		currentEndSession: reportedEndSession,
+		allocation: Object.fromEntries(allocation.map(([key, share]) => [key.asText(), share])),
 		readAt: Date.now(),
 		tokenDecimals: 10,
 	};

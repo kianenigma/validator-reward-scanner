@@ -19,11 +19,15 @@ block authorship and parachain consensus (backing, plus rare dispute statements)
     `weight / ErasSumValidatorIncentiveWeight` for eras before `WeightedPointsFormulaStartEra`.
     Validators without points get nothing.
 - Identities from the People chain.
+- Issuance per era (the collapsible chart under the era strip): each concluded era's staker rewards
+  and validator incentive pots, plus the DAP's cut. The DAP's cut is not stored per era, so the
+  era's issuance is taken as the staker pot divided by the `staker_rewards` share of
+  `Dap::BudgetAllocation`, and the DAP gets the rest. This assumes the staker share has not changed
+  over the eras shown.
 
-Scans take about a minute per era and are cached in IndexedDB. "Scan current era" re-reads Asset Hub
-and scans the running era up to its last session reported to Asset Hub
-(`StakingRcClient::LastSessionReportEndingIndex`), so it lags the relay chain by up to a session.
-Such scans are not cached, and the era has no DOT figures until it ends.
+Scans take about a minute per era and are cached in IndexedDB. Only concluded eras can be scanned:
+the running era shows its points so far (up to `StakingRcClient::LastSessionReportEndingIndex`) but
+is not scanned until it ends, and it has no DOT figures until then.
 
 The Connections dialog sets the RPC endpoints of each chain, or reads Asset Hub and the People
 chain through an in-browser smoldot light client. The relay chain always goes over RPC and must

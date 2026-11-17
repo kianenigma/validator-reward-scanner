@@ -1,14 +1,14 @@
 import { AccountId } from "polkadot-api";
 import { relayClient } from "./chains";
+import { NETWORK } from "../network";
 
 // Raw storage keys, read with `state_getStorage` rather than the typed API so that blocks under
 // any past runtime decode the same way without fetching their metadata.
 const SESSION_CURRENT_INDEX = "0xcec5070d609dd3497f72bde07fc96ba072763800a36a99fdfc7c10f6415f6ee6";
 const SESSION_VALIDATORS = "0xcec5070d609dd3497f72bde07fc96ba088dcde934c658227ee1dfafcd6e16903";
-/** Expected relay blocks per session (4h of 6s blocks); only a search hint. */
-const BLOCKS_PER_SESSION_HINT = 2400;
+const BLOCKS_PER_SESSION_HINT = NETWORK.blocksPerSession;
 
-const accountCodec = AccountId(0);
+const accountCodec = AccountId(NETWORK.ss58);
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const rpc = async <T = any>(method: string, params: unknown[]): Promise<T> =>

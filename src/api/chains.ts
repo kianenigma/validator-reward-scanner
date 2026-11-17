@@ -2,12 +2,12 @@ import { createClient, type PolkadotClient } from "polkadot-api";
 import { getWsProvider } from "polkadot-api/ws-provider";
 import { dot, dotPeople, pah } from "@polkadot-api/descriptors";
 import { DEFAULT_SETTINGS, type Settings } from "../settings";
+import { NETWORK } from "../network";
 
 /** Points the relay chain credits a block author with (`StakingAhClient::PointsPerBlock`). */
 export const POINTS_PER_BLOCK = 20;
 /** Points per backed candidate (`polkadot_runtime_parachains::reward_points::BACKING_POINTS`). */
 export const POINTS_PER_BACKING = 20;
-export const SESSIONS_PER_ERA = 6;
 
 let settings: Settings = DEFAULT_SETTINGS;
 type Provider = Parameters<typeof createClient>[0];
@@ -31,21 +31,19 @@ export function configure(s: Settings) {
  * the default RPC setup never downloads smoldot.
  */
 async function smoldotProviders(): Promise<{ ah: Provider; people: Provider }> {
-	const [{ startFromWorker }, { getSmProvider }, { default: SmWorker }, relaySpec, ahSpec, peopleSpec] =
+	const [{ startFromWorker }, { getSmProvider }, { default: SmWorker }, [relaySpec, ahSpec, peopleSpec]] =
 		await Promise.all([
 			import("polkadot-api/smoldot/from-worker"),
 			import("polkadot-api/sm-provider"),
 			import("polkadot-api/smoldot/worker?worker"),
-			import("polkadot-api/chains/polkadot"),
-			import("polkadot-api/chains/polkadot_asset_hub"),
-			import("polkadot-api/chains/polkadot_people"),
+			NETWORK.chainSpecs(),
 		]);
 	const smoldot = startFromWorker(new SmWorker());
 	teardown = () => smoldot.terminate();
-	const relay = await smoldot.addChain({ chainSpec: relaySpec.chainSpec });
+	const relay = await smoldot.addChain({ chainSpec: relaySpec });
 	const [ah, people] = await Promise.all([
-		smoldot.addChain({ chainSpec: ahSpec.chainSpec, potentialRelayChains: [relay] }),
-		smoldot.addChain({ chainSpec: peopleSpec.chainSpec, potentialRelayChains: [relay] }),
+		smoldot.addChain({ chainSpec: ahSpec, potentialRelayChains: [relay] }),
+		smoldot.addChain({ chainSpec: peopleSpec, potentialRelayChains: [relay] }),
 	]);
 	return { ah: getSmProvider(ah), people: getSmProvider(people) };
 }
@@ -67,8 +65,12 @@ function get(): Promise<Clients> {
 	return pending;
 }
 
+// Westend is read with the Polkadot descriptors too. papi checks each query against the live
+// runtime's metadata and fails it if the shapes differ, rather than misdecoding it.
 export const relayClient = async () => (await get()).relay;
 export const ahApi = async () => (await get()).ah.getTypedApi(pah);
+/** Asset Hub without descriptors, for storage that is newer than the Polkadot descriptors. */
+export const ahUnsafeApi = async () => (await get()).ah.getUnsafeApi();
 /** Hash of Asset Hub's finalized block, to read several storage items at one consistent state. */
 export const ahFinalizedHash = async () => (await (await get()).ah.getFinalizedBlock()).hash;
 export const peopleApi = async () => (await get()).people.getTypedApi(dotPeople);

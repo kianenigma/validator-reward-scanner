@@ -1,5 +1,6 @@
-import { ahApi, ahFinalizedHash, peopleApi, SESSIONS_PER_ERA } from "./chains";
+import { ahApi, ahFinalizedHash, ahUnsafeApi, peopleApi } from "./chains";
 import { firstBlockOfSession, scanAuthors, sessionTip, sessionValidatorsAt } from "./relay";
+import { NETWORK } from "../network";
 import type { EraIncentive, EraPoints, EraScan, Overview, SessionRange } from "../types";
 
 /**
@@ -26,6 +27,8 @@ export async function fetchOverview(onProgress: (msg: string) => void, at?: stri
 		weightedPointsStart,
 		lastReportedSession,
 		allocation,
+		sessionsPerEra,
+		collation,
 	] = await Promise.all([
 		api.query.Staking.ActiveEra.getValue(opts),
 		api.query.Staking.BondedEras.getValue(opts),
@@ -37,6 +40,8 @@ export async function fetchOverview(onProgress: (msg: string) => void, at?: stri
 		api.query.Staking.WeightedPointsFormulaStartEra.getValue(opts),
 		api.query.StakingRcClient.LastSessionReportEndingIndex.getValue(opts),
 		api.query.Dap.BudgetAllocation.getValue(opts),
+		api.constants.Staking.SessionsPerEra(),
+		fetchCollationPoints(opts.at),
 	]);
 	if (!active) throw new Error("Staking.ActiveEra is empty");
 	if (bonded.length === 0) throw new Error("Staking.BondedEras is empty");
@@ -67,12 +72,13 @@ export async function fetchOverview(onProgress: (msg: string) => void, at?: stri
 			const known = startOf.get(era);
 			return {
 				era,
-				startSession: known ?? oldestSession - (oldestEra - era) * SESSIONS_PER_ERA,
+				startSession: known ?? oldestSession - (oldestEra - era) * sessionsPerEra,
 				startSessionInferred: known === undefined,
 				totalPoints: value.total,
 				validatorReward: rewards.get(era) ?? null,
 				incentive: incentiveOf(era),
 				individual: value.individual.map(([stash, p]) => [stash, p] as [string, number]),
+				collation: collation.get(era) ?? { total: 0, individual: {} },
 			};
 		})
 		.sort((a, b) => b.era - a.era);
@@ -93,8 +99,38 @@ export async function fetchOverview(onProgress: (msg: string) => void, at?: stri
 		currentEndSession: reportedEndSession,
 		allocation: Object.fromEntries(allocation.map(([key, share]) => [key.asText(), share])),
 		readAt: Date.now(),
-		tokenDecimals: 10,
+		sessionsPerEra,
+		tokenDecimals: NETWORK.token.decimals,
+		tokenSymbol: NETWORK.token.symbol,
 	};
+}
+
+type ServicePoints = { total: number; individual: [string, number][] };
+
+/**
+ * Points each era credited for authoring system chain blocks: `Staking::ErasRewardPointsByService`
+ * under `Collation` (polkadot-sdk#13464). Asset Hub converts the blocks that Asset Hub and the
+ * People chain report into points as they arrive, crediting them to the era active at that time.
+ *
+ * Read without descriptors, since the Polkadot ones predate this item. A runtime without it credits
+ * no collation points.
+ */
+async function fetchCollationPoints(at: string): Promise<Map<number, EraPoints["collation"]>> {
+	const api = await ahUnsafeApi();
+	const byService = api.query.Staking.ErasRewardPointsByService;
+	try {
+		// Encodes the map's key prefix from the runtime's metadata, so it throws only if the
+		// runtime has no such item.
+		byService.getKey(await api.runtimeToken);
+	} catch {
+		return new Map();
+	}
+	const entries: { keyArgs: [number, { type: string }]; value: ServicePoints }[] = await byService.getEntries({ at });
+	return new Map(
+		entries
+			.filter(({ keyArgs: [, service] }) => service.type === "Collation")
+			.map(({ keyArgs: [era], value }) => [era, { total: value.total, individual: Object.fromEntries(value.individual) }]),
+	);
 }
 
 /** A concluded era, or the running one. */
@@ -109,7 +145,7 @@ export function endSessionOf(era: EraPoints, overview: Overview): number {
 	const next = overview.eras.find((e) => e.era === era.era + 1);
 	if (next) return next.startSession;
 	if (era.era + 1 === overview.activeEra) return overview.activeEraStartSession;
-	return era.startSession + SESSIONS_PER_ERA;
+	return era.startSession + overview.sessionsPerEra;
 }
 
 /** Counts the relay blocks each validator authored over the sessions of `era`. */

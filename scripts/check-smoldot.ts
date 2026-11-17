@@ -1,14 +1,14 @@
 // Reads era points and identities through smoldot, as the "Smoldot light client" setting does.
 // The app runs smoldot in a web worker; this uses the in-process build of the same client.
+// Usage: [NETWORK=westend] bun scripts/check-smoldot.ts
 import { createClient } from "polkadot-api";
 import { getSmProvider } from "polkadot-api/sm-provider";
 import { start } from "polkadot-api/smoldot";
-import { chainSpec as relaySpec } from "polkadot-api/chains/polkadot";
-import { chainSpec as ahSpec } from "polkadot-api/chains/polkadot_asset_hub";
-import { chainSpec as peopleSpec } from "polkadot-api/chains/polkadot_people";
 import { dotPeople, pah } from "@polkadot-api/descriptors";
+import { NETWORK } from "../src/network";
 
 const t = Date.now();
+const [relaySpec, ahSpec, peopleSpec] = await NETWORK.chainSpecs();
 const smoldot = start();
 const relay = await smoldot.addChain({ chainSpec: relaySpec });
 const ah = createClient(getSmProvider(await smoldot.addChain({ chainSpec: ahSpec, potentialRelayChains: [relay] })));

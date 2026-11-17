@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
-import { dotAmount, fmt } from "../format";
+import { fmt, tokenAmount } from "../format";
+import { useFold } from "../fold";
 import type { Overview } from "../types";
 
 const PERBILL = 1_000_000_000n;
@@ -47,15 +48,6 @@ const compact = (v: number) => (v >= 1e6 ? `${v / 1e6}M` : v >= 1e3 ? `${v / 1e3
 const share = (part: bigint, whole: bigint) =>
 	whole > 0n ? `${(Number((part * 1000n + whole / 2n) / whole) / 10).toFixed(1)}%` : "–";
 
-/** Collapsed unless the viewer left it open last time. */
-function readOpen(): boolean {
-	try {
-		return localStorage.getItem(OPEN_KEY) === "true";
-	} catch {
-		return false;
-	}
-}
-
 interface Props {
 	overview: Overview;
 	selected: number | null;
@@ -65,7 +57,7 @@ interface Props {
 /** Stacked bars of each concluded era's issuance: staker rewards, validator incentive and the DAP's cut. */
 export function IssuanceChart({ overview, selected, onSelect }: Props) {
 	const bars = useMemo(() => issuanceBars(overview), [overview]);
-	const [open, setOpen] = useState(readOpen);
+	const [open, toggle] = useFold(OPEN_KEY);
 	const [tip, setTip] = useState<{ i: number; x: number; flip: boolean } | null>(null);
 	const frame = useRef<HTMLDivElement>(null);
 	const scroller = useRef<HTMLDivElement>(null);
@@ -76,17 +68,6 @@ export function IssuanceChart({ overview, selected, onSelect }: Props) {
 		const el = scroller.current;
 		if (open && el) el.scrollLeft = el.scrollWidth;
 	}, [open, bars.length]);
-
-	// Browsers also fire `toggle` when a details element is first rendered open; only a real change counts.
-	const toggle = (next: boolean) => {
-		if (next === open) return;
-		setOpen(next);
-		try {
-			localStorage.setItem(OPEN_KEY, String(next));
-		} catch {
-			// not remembered; still toggled for this visit
-		}
-	};
 
 	const place = (i: number) => {
 		const col = cols.current[i];
@@ -119,7 +100,7 @@ export function IssuanceChart({ overview, selected, onSelect }: Props) {
 
 	const latest = bars[bars.length - 1];
 	const dotOf = (planck: bigint) => Number(planck) / 10 ** overview.tokenDecimals;
-	const amount = (planck: bigint) => dotAmount(planck, overview.tokenDecimals);
+	const amount = (planck: bigint) => tokenAmount(planck, overview.tokenDecimals);
 	const max = Math.max(...bars.map((b) => dotOf(b.total)), 1);
 	const step = niceStep(max / 4);
 	const ticks = Array.from({ length: Math.floor(max / step) + 1 }, (_, i) => i * step);
@@ -128,19 +109,19 @@ export function IssuanceChart({ overview, selected, onSelect }: Props) {
 	const stakerShare = overview.allocation.staker_rewards;
 
 	return (
-		<details className="issuance" open={open} onToggle={(e) => toggle(e.currentTarget.open)}>
+		<details className="fold" open={open} onToggle={(e) => toggle(e.currentTarget.open)}>
 			<summary>
 				<span className="section-title">Issuance per era</span>
 				{latest && (
-					<span className="issuance-sub">
-						{amount(latest.total)} DOT minted in era {latest.era}: {share(latest.staker, latest.total)} staker
+					<span className="fold-sub">
+						{amount(latest.total)} {overview.tokenSymbol} minted in era {latest.era}: {share(latest.staker, latest.total)} staker
 						rewards, {share(latest.incentive, latest.total)} validator incentive, {share(latest.dap, latest.total)}{" "}
 						DAP
 					</span>
 				)}
 			</summary>
 
-			<div className="issuance-body">
+			<div className="fold-body">
 				{bars.length === 0 ? (
 					<p className="muted">No concluded era has both staking pots recorded yet.</p>
 				) : (
@@ -167,7 +148,7 @@ export function IssuanceChart({ overview, selected, onSelect }: Props) {
 								ref={scroller}
 								tabIndex={0}
 								role="group"
-								aria-label="DOT issued per era. Arrow keys move between eras, Enter opens one."
+								aria-label={`${overview.tokenSymbol} issued per era. Arrow keys move between eras, Enter opens one.`}
 								onKeyDown={onKey}
 								onFocus={() => tip || place(selectedIndex >= 0 ? selectedIndex : bars.length - 1)}
 								onBlur={() => setTip(null)}
@@ -219,20 +200,24 @@ export function IssuanceChart({ overview, selected, onSelect }: Props) {
 												<i className={`swatch ${s.key}`} />
 												{s.label}
 											</span>
-											<span>{amount(bars[tip.i][s.key])} DOT</span>
+											<span>
+												{amount(bars[tip.i][s.key])} {overview.tokenSymbol}
+											</span>
 											<span className="soft">{share(bars[tip.i][s.key], bars[tip.i].total)}</span>
 										</div>
 									))}
 									<div className="itip-row total">
 										<span>Total issuance</span>
-										<span>{amount(bars[tip.i].total)} DOT</span>
+										<span>
+											{amount(bars[tip.i].total)} {overview.tokenSymbol}
+										</span>
 										<span />
 									</div>
 								</div>
 							)}
 						</div>
 
-						<p className="issuance-note">
+						<p className="fold-note">
 							Concluded eras. Staker rewards and validator incentive are the era's pots
 							(<code>Staking::ErasValidatorReward</code>, <code>ErasValidatorIncentiveBudget</code>). The era's
 							issuance is the staker pot divided by its share of <code>Dap::BudgetAllocation</code> (

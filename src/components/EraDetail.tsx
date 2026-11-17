@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { POINTS_PER_BACKING, POINTS_PER_BLOCK } from "../api/chains";
 import { endSessionOf, incentiveOf } from "../api/eras";
-import { dot, dotAmount, fmt, pct, short, U32_MAX } from "../format";
+import { fmt, pct, short, tokenAmount, tokens, U32_MAX } from "../format";
 import type { EraPoints, EraScan, Overview, ValidatorRow } from "../types";
 import type { ScanJob } from "./App";
 
@@ -18,13 +18,33 @@ interface Props {
 	onRescan: () => void;
 }
 
-type SortKey = "points" | "reward" | "incentive" | "totalDot" | "blocks" | "authorPoints" | "otherPoints" | "authorShare" | "otherShare";
+type SortKey =
+	| "points"
+	| "reward"
+	| "incentive"
+	| "totalDot"
+	| "blocks"
+	| "authorPoints"
+	| "otherPoints"
+	| "collationPoints"
+	| "authorShare"
+	| "otherShare"
+	| "collationShare";
 
-function SplitBar({ author, other, scale, title }: { author: number; other: number; scale: number; title?: string }) {
+interface SplitProps {
+	author: number;
+	other: number;
+	collation: number;
+	scale: number;
+	title?: string;
+}
+
+function SplitBar({ author, other, collation, scale, title }: SplitProps) {
 	return (
 		<div className="split" title={title}>
 			{author > 0 && <span className="seg author" style={{ width: `${(author / scale) * 100}%` }} />}
 			{other > 0 && <span className="seg other" style={{ width: `${(other / scale) * 100}%` }} />}
+			{collation > 0 && <span className="seg collation" style={{ width: `${(collation / scale) * 100}%` }} />}
 		</div>
 	);
 }
@@ -41,6 +61,7 @@ export function EraDetail({ era, overview, scan, names, weights, job, queued, on
 			const p = points.get(stash) ?? 0;
 			const blocks = scan ? (scan.authored[stash] ?? 0) : null;
 			const authorPoints = blocks === null ? null : blocks * POINTS_PER_BLOCK;
+			const collationPoints = era.collation.individual[stash] ?? 0;
 			const reward =
 				era.validatorReward === null || era.totalPoints === 0
 					? null
@@ -55,7 +76,8 @@ export function EraDetail({ era, overview, scan, names, weights, job, queued, on
 				totalDot: reward === null || incentive === null ? null : reward + incentive,
 				blocks,
 				authorPoints,
-				otherPoints: authorPoints === null ? null : p - authorPoints,
+				collationPoints,
+				otherPoints: authorPoints === null ? null : p - authorPoints - collationPoints,
 			};
 		});
 	}, [era, scan, names, weights]);
@@ -68,7 +90,9 @@ export function EraDetail({ era, overview, scan, names, weights, job, queued, on
 				? share(r.authorPoints, r.points)
 				: sort.key === "otherShare"
 					? share(r.otherPoints, r.points)
-					: Number(r[sort.key] ?? 0);
+					: sort.key === "collationShare"
+						? share(r.collationPoints, r.points)
+						: Number(r[sort.key] ?? 0);
 		return rows
 			.filter((r) => !q || r.stash.toLowerCase().includes(q) || r.name?.toLowerCase().includes(q))
 			.sort((a, b) => (sort.desc ? value(b) - value(a) : value(a) - value(b)));
@@ -76,14 +100,16 @@ export function EraDetail({ era, overview, scan, names, weights, job, queued, on
 
 	const blocks = scan ? scan.toBlock - scan.fromBlock : null;
 	const authorTotal = blocks === null ? null : blocks * POINTS_PER_BLOCK;
-	const otherTotal = authorTotal === null ? null : era.totalPoints - authorTotal;
+	const collationTotal = era.collation.total;
+	const hasCollation = collationTotal > 0;
+	const otherTotal = authorTotal === null ? null : era.totalPoints - authorTotal - collationTotal;
 	const maxPoints = Math.max(...rows.map((r) => r.points), 1);
 	const endSession = endSessionOf(era, overview);
 	const anomalies = rows.filter((r) => r.otherPoints !== null && r.otherPoints < 0).length;
 	const u32Share = era.totalPoints / U32_MAX;
 	const live = era.era === overview.activeEra;
 
-	const amount = (planck: bigint | null) => (planck === null ? "…" : dotAmount(planck, overview.tokenDecimals, 2));
+	const amount = (planck: bigint | null) => (planck === null ? "…" : tokenAmount(planck, overview.tokenDecimals, 2));
 
 	const th = (key: SortKey, label: string) => (
 		<th className="num" aria-sort={sort.key === key ? (sort.desc ? "descending" : "ascending") : "none"}>
@@ -106,19 +132,38 @@ export function EraDetail({ era, overview, scan, names, weights, job, queued, on
 					<h2 className="headline">
 						In era {era.era}{live ? " so far" : ""}, authoring relay blocks earned{" "}
 						<span className="figure author-ink">{pct(authorTotal, era.totalPoints)}</span> of the{" "}
-						<span className="figure">{fmt(era.totalPoints)}</span> points. Parachain consensus earned the
-						other <span className="figure other-ink">{pct(otherTotal, era.totalPoints)}</span>.
+						<span className="figure">{fmt(era.totalPoints)}</span> points.{" "}
+						{hasCollation ? (
+							<>
+								Parachain consensus earned{" "}
+								<span className="figure other-ink">{pct(otherTotal, era.totalPoints)}</span>, and authoring
+								system chain blocks <span className="figure collation-ink">{pct(collationTotal, era.totalPoints)}</span>.
+							</>
+						) : (
+							<>
+								Parachain consensus earned the other{" "}
+								<span className="figure other-ink">{pct(otherTotal, era.totalPoints)}</span>.
+							</>
+						)}
 					</h2>
 				) : (
 					<h2 className="headline">
 						Era {era.era} {live ? "has issued" : "issued"} <span className="figure">{fmt(era.totalPoints)}</span>{" "}
-						points to <span className="figure">{fmt(era.individual.length)}</span> validators{live ? " so far" : ""}.
+						points to <span className="figure">{fmt(era.individual.length)}</span> validators{live ? " so far" : ""}
+						{hasCollation ? (
+							<>
+								, <span className="figure collation-ink">{pct(collationTotal, era.totalPoints)}</span> of them for
+								authoring system chain blocks.
+							</>
+						) : (
+							"."
+						)}
 					</h2>
 				)}
 
 				{scan && authorTotal !== null && otherTotal !== null && (
 					<div className="hero-split">
-						<SplitBar author={authorTotal} other={otherTotal} scale={era.totalPoints} />
+						<SplitBar author={authorTotal} other={otherTotal} collation={collationTotal} scale={era.totalPoints} />
 						<div className="split-key">
 							<span>
 								<i className="swatch author" />
@@ -129,6 +174,12 @@ export function EraDetail({ era, overview, scan, names, weights, job, queued, on
 								Parachain consensus: {fmt(otherTotal)} pts, about {fmt(Math.round(otherTotal / POINTS_PER_BACKING))}{" "}
 								backed candidates at {POINTS_PER_BACKING} pts each
 							</span>
+							{hasCollation && (
+								<span>
+									<i className="swatch collation" />
+									System chain collation: {fmt(collationTotal)} pts for Asset Hub and People blocks
+								</span>
+							)}
 						</div>
 					</div>
 				)}
@@ -180,7 +231,7 @@ export function EraDetail({ era, overview, scan, names, weights, job, queued, on
 						<dt>Rewards</dt>
 						<dd>
 							Not set yet
-							<small>Both DOT pots are snapshotted when the era ends</small>
+							<small>Both {overview.tokenSymbol} pots are snapshotted when the era ends</small>
 						</dd>
 					</div>
 				)}
@@ -188,7 +239,7 @@ export function EraDetail({ era, overview, scan, names, weights, job, queued, on
 					<div>
 						<dt>Staker rewards pot</dt>
 						<dd>
-							{dot(era.validatorReward, overview.tokenDecimals)}
+							{tokens(era.validatorReward, overview.tokenDecimals, overview.tokenSymbol)}
 							<small>Split by points, shared with nominators</small>
 						</dd>
 					</div>
@@ -197,7 +248,7 @@ export function EraDetail({ era, overview, scan, names, weights, job, queued, on
 					<div>
 						<dt>Self-stake incentive pot</dt>
 						<dd>
-							{dot(era.incentive.budget, overview.tokenDecimals)}
+							{tokens(era.incentive.budget, overview.tokenDecimals, overview.tokenSymbol)}
 							<small>
 								Split by self-stake weight{era.incentive.weighted ? " × points" : " only (pre-cutoff era)"}, to
 								the validator
@@ -242,8 +293,8 @@ export function EraDetail({ era, overview, scan, names, weights, job, queued, on
 
 			{anomalies > 0 && (
 				<p className="alert" role="alert">
-					{anomalies} validators have more authoring points than total points, so this era's session range
-					is likely wrong. Treat the split below with caution.
+					{anomalies} validators have more points from relay authorship{hasCollation ? " and collation" : ""} than
+					in total, so this era's session range is likely wrong. Treat the split below with caution.
 				</p>
 			)}
 
@@ -270,14 +321,16 @@ export function EraDetail({ era, overview, scan, names, weights, job, queued, on
 								<th>Validator</th>
 								{th("points", "Points")}
 								<th className="num">Of era</th>
-								{era.validatorReward !== null && th("reward", "Staker DOT")}
-								{era.incentive && th("incentive", "Incentive DOT")}
-								{era.validatorReward !== null && era.incentive && th("totalDot", "Total DOT")}
+								{era.validatorReward !== null && th("reward", `Staker ${overview.tokenSymbol}`)}
+								{era.incentive && th("incentive", `Incentive ${overview.tokenSymbol}`)}
+								{era.validatorReward !== null && era.incentive && th("totalDot", `Total ${overview.tokenSymbol}`)}
 								{th("blocks", "Blocks")}
 								{th("authorPoints", "Authoring")}
 								{th("authorShare", "%")}
 								{th("otherPoints", "Para consensus")}
 								{th("otherShare", "%")}
+								{hasCollation && th("collationPoints", "Collation")}
+								{hasCollation && th("collationShare", "%")}
 								<th className="bar-col">Split</th>
 							</tr>
 						</thead>
@@ -309,16 +362,20 @@ export function EraDetail({ era, overview, scan, names, weights, job, queued, on
 									<td className="num soft">{r.authorPoints === null ? "–" : pct(r.authorPoints, r.points)}</td>
 									<td className="num">{r.otherPoints === null ? "–" : fmt(r.otherPoints)}</td>
 									<td className="num soft">{r.otherPoints === null ? "–" : pct(r.otherPoints, r.points)}</td>
+									{hasCollation && <td className="num">{fmt(r.collationPoints)}</td>}
+									{hasCollation && <td className="num soft">{pct(r.collationPoints, r.points)}</td>}
 									<td className="bar-col">
 										<SplitBar
 											author={r.authorPoints ?? 0}
-											other={r.otherPoints ?? r.points}
+											other={r.otherPoints ?? r.points - r.collationPoints}
+											collation={r.collationPoints}
 											scale={maxPoints}
-											title={
+											title={[
 												r.authorPoints === null
 													? `${fmt(r.points)} pts`
-													: `${fmt(r.blocks!)} blocks → ${fmt(r.authorPoints)} pts from authorship\n${fmt(r.otherPoints!)} pts from parachain consensus (≈ ${fmt(Math.round(r.otherPoints! / POINTS_PER_BACKING))} backings)`
-											}
+													: `${fmt(r.blocks!)} blocks → ${fmt(r.authorPoints)} pts from authorship\n${fmt(r.otherPoints!)} pts from parachain consensus (≈ ${fmt(Math.round(r.otherPoints! / POINTS_PER_BACKING))} backings)`,
+												...(r.collationPoints > 0 ? [`${fmt(r.collationPoints)} pts from system chain collation`] : []),
+											].join("\n")}
 										/>
 									</td>
 								</tr>

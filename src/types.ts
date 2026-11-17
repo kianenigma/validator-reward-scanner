@@ -20,6 +20,11 @@ export interface EraPoints {
 	incentive: EraIncentive | null;
 	/** `[stash, points]`, as stored in `Staking::ErasRewardPoints`. */
 	individual: [string, number][];
+	/**
+	 * Points for authoring system chain blocks, part of `totalPoints` and `individual`:
+	 * `Staking::ErasRewardPointsByService` under `Collation`. Zero where the runtime credits none.
+	 */
+	collation: { total: number; individual: Record<string, number> };
 }
 
 export interface Overview {
@@ -35,7 +40,47 @@ export interface Overview {
 	allocation: Record<string, number>;
 	/** When this overview was read, in ms since the epoch. */
 	readAt: number;
+	/** `Staking::SessionsPerEra`; eras older than `BondedEras` are assumed to last this long. */
+	sessionsPerEra: number;
 	tokenDecimals: number;
+	tokenSymbol: string;
+}
+
+/**
+ * What an account is to the DAP: its own buffer, one of the two staking pots it drips into, the
+ * staging account its inflows pass through, or another drip recipient.
+ */
+export type DapRole = "buffer" | "staker" | "incentive" | "staging" | "other";
+
+export interface DapAccount {
+	role: DapRole;
+	/** The `BudgetKey` of a drip recipient; `staging` for the staging account. */
+	key: string;
+	address: string;
+	/** Share of each drip in parts per billion, or null if the drip does not pay this account. */
+	share: number | null;
+	/** Free plus reserved, in planck. */
+	balance: bigint;
+	/**
+	 * For a staking pot: the era pots staking moved it into at the end of each era still held, and
+	 * what is left in them in planck.
+	 */
+	eraPots: { eras: number; balance: bigint } | null;
+}
+
+/** The DAP's accounts and drip settings, read at one Asset Hub block. */
+export interface Dap {
+	/** Drip recipients in runtime order, then the staging account. */
+	accounts: DapAccount[];
+	/** `Dap::IssuanceCadence`: least time between drips. */
+	cadenceMs: number;
+	/** `Dap::MaxElapsedPerDrip`: most time one drip mints for. */
+	maxElapsedMs: number;
+	/** `Dap::LastIssuanceTimestamp`, in ms since the epoch. */
+	lastDripMs: number;
+	totalIssuance: bigint;
+	/** `Balances::InactiveIssuance`; the buffer deactivates everything it receives. */
+	inactiveIssuance: bigint;
 }
 
 export interface SessionRange {
@@ -69,6 +114,11 @@ export interface ValidatorRow {
 	totalDot: bigint | null;
 	blocks: number | null;
 	authorPoints: number | null;
-	/** Points not explained by authorship: parachain backing, plus rare dispute statements. */
+	/** Points for authoring system chain blocks. */
+	collationPoints: number;
+	/**
+	 * Points explained by neither relay authorship nor collation: parachain backing, plus rare
+	 * dispute statements.
+	 */
 	otherPoints: number | null;
 }

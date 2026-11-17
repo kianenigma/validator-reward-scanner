@@ -1,5 +1,5 @@
 // Scans one era end to end and cross-checks the result against Asset Hub's era points.
-// Usage: bun scripts/check-era.ts [era | current]
+// Usage: [NETWORK=westend] bun scripts/check-era.ts [era | current]
 import { fetchOverview, findEra, scanEra, endSessionOf } from "../src/api/eras";
 import { destroyClients, relayApi, POINTS_PER_BLOCK } from "../src/api/chains";
 import { blockHash, sessionValidatorsAt, finalizedNumber } from "../src/api/relay";
@@ -25,8 +25,10 @@ const points = new Map(era.individual);
 const blocks = scan.toBlock - scan.fromBlock;
 const authorPts = blocks * POINTS_PER_BLOCK;
 const notInPoints = Object.keys(scan.authored).filter((s) => !points.has(s));
-const exceeding = Object.entries(scan.authored).filter(([s, b]) => b * POINTS_PER_BLOCK > (points.get(s) ?? 0));
-console.log({ blocks, authorPts, share: (authorPts / era.totalPoints * 100).toFixed(3) + "%", authors: Object.keys(scan.authored).length, notInPoints: notInPoints.length, exceeding: exceeding.length });
+// Collation points (system chain blocks) are part of the era points but not of the relay scan.
+const collation = era.collation.individual;
+const exceeding = Object.entries(scan.authored).filter(([s, b]) => b * POINTS_PER_BLOCK + (collation[s] ?? 0) > (points.get(s) ?? 0));
+console.log({ blocks, authorPts, share: (authorPts / era.totalPoints * 100).toFixed(3) + "%", collationPts: era.collation.total, authors: Object.keys(scan.authored).length, notInPoints: notInPoints.length, exceeding: exceeding.length });
 const top = Object.entries(scan.authored).sort((a, b) => b[1] - a[1]).slice(0, 3);
 console.log("top authors", top.map(([s, b]) => [s, b, points.get(s)]));
 destroyClients();

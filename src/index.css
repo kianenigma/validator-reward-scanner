@@ -11,6 +11,8 @@
 	/* Chart series, validated for CVD separation against --surface. */
 	--author: #d4006f;
 	--other: #4b53d6;
+	/* System chain collation; also kept at least ΔE 15 from --staker and --incentive. */
+	--collation: #a69300;
 	/* Issuance series: kept apart from the two above, which mean authorship and consensus. */
 	--staker: #13976b;
 	--incentive: #eb6834;
@@ -35,20 +37,22 @@
 	--danger: #ff6b74;
 	--author: #e0277f;
 	--other: #6670e8;
+	--collation: #ab9500;
 	--staker: #199e70;
 	--incentive: #d95926;
 	--dap: #3987e5;
 	color-scheme: dark;
 }
 
-.theme-switch {
+/* Segmented switches: network and theme */
+.segmented {
 	display: inline-flex;
 	background: var(--surface);
 	border: 1px solid var(--rule);
 	border-radius: 999px;
 	padding: 3px;
 }
-.theme-switch button {
+.segmented button {
 	font: 500 0.82rem/1 var(--text);
 	color: var(--muted);
 	background: none;
@@ -57,8 +61,8 @@
 	padding: 0.45rem 0.8rem;
 	cursor: pointer;
 }
-.theme-switch button:hover { color: var(--ink); }
-.theme-switch button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
+.segmented button:hover { color: var(--ink); }
+.segmented button[aria-pressed="true"] { background: var(--ink); color: var(--surface); }
 .masthead-actions { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; }
 
 * {
@@ -198,13 +202,14 @@ body {
 	margin: 0.6rem 0 0;
 }
 
-/* Issuance per era: a collapsible stacked bar chart under the strip */
-.issuance {
+/* Collapsible sections under the strip: issuance per era and the DAP */
+.fold {
 	margin-top: 1.5rem;
 	background: var(--surface);
 	border-radius: 14px;
 }
-.issuance > summary {
+.fold + .fold { margin-top: 0.75rem; }
+.fold > summary {
 	display: flex;
 	align-items: baseline;
 	flex-wrap: wrap;
@@ -214,8 +219,8 @@ body {
 	list-style: none;
 	border-radius: 14px;
 }
-.issuance > summary::-webkit-details-marker { display: none; }
-.issuance > summary::before {
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::before {
 	content: "";
 	width: 0.45rem;
 	height: 0.45rem;
@@ -224,10 +229,13 @@ body {
 	transform: translateY(-0.15rem) rotate(-45deg);
 	transition: transform 0.15s;
 }
-.issuance[open] > summary::before { transform: translateY(-0.25rem) rotate(45deg); }
-.issuance > summary:hover .section-title { text-decoration: underline; text-underline-offset: 3px; }
-.issuance-sub { color: var(--muted); font-size: 0.88rem; }
-.issuance-body { padding: 0 1.25rem 1.1rem; }
+.fold[open] > summary::before { transform: translateY(-0.25rem) rotate(45deg); }
+.fold > summary:hover .section-title { text-decoration: underline; text-underline-offset: 3px; }
+.fold-sub { color: var(--muted); font-size: 0.88rem; }
+.fold-body { padding: 0 1.25rem 1.1rem; }
+.fold-note { color: var(--faint); font-size: 0.8rem; max-width: 100ch; margin-top: 0.3rem; }
+.fold-note code { font-size: 0.95em; }
+
 .issuance-key {
 	display: flex;
 	flex-wrap: wrap;
@@ -317,8 +325,36 @@ body {
 .itip-row > :not(:first-child) { text-align: right; }
 .itip-row > :nth-child(2) { color: var(--ink); }
 .itip-row.total { border-top: 1px solid var(--rule); margin-top: 0.35rem; padding-top: 0.35rem; color: var(--ink); font-weight: 600; }
-.issuance-note { color: var(--faint); font-size: 0.8rem; max-width: 100ch; margin-top: 0.3rem; }
-.issuance-note code { font-size: 0.95em; }
+
+/* DAP: where each drip goes, and what every account holds */
+.dap-drip {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: center;
+	gap: 0.9rem;
+	color: var(--muted);
+	font-size: 0.85rem;
+	margin-bottom: 0.6rem;
+}
+.dap-scroll { overflow-x: auto; margin-bottom: 0.8rem; }
+.dap-table th { position: static; }
+.dap-table td { vertical-align: top; }
+.dap-table tbody tr:hover td { background: none; }
+.dap-what {
+	display: block;
+	white-space: normal;
+	min-width: 22ch;
+	max-width: 56ch;
+	color: var(--faint);
+	font-size: 0.8rem;
+	margin: 0.15rem 0 0 1.15rem;
+}
+.dap-table .addr { color: var(--faint); font-size: 0.8rem; }
+.dap-pots td:first-child { padding-left: 1.85rem; }
+.dap-pots td { border-bottom-style: dashed; }
+.dap-table tfoot td { border-bottom: none; border-top: 1px solid var(--rule); font-weight: 600; }
+/* Accounts the drip does not pay: an outline, so names still line up */
+.swatch.plain, .seg.plain { background: none; box-shadow: inset 0 0 0 1.5px var(--faint); }
 
 /* Hero: the finding, said as a sentence */
 .hero {
@@ -336,6 +372,7 @@ body {
 }
 .author-ink { color: var(--author); }
 .other-ink { color: var(--other); }
+.collation-ink { color: var(--collation); }
 
 .hero-split { margin-top: 1.75rem; }
 .hero-split .split { height: 28px; }
@@ -357,6 +394,7 @@ body {
 }
 .swatch.author { background: var(--author); }
 .swatch.other { background: var(--other); }
+.swatch.collation { background: var(--collation); }
 
 .scan-cta {
 	display: flex;
@@ -381,6 +419,7 @@ body {
 .split .seg:only-child { border-radius: 4px; }
 .seg.author { background: var(--author); }
 .seg.other { background: var(--other); }
+.seg.collation { background: var(--collation); }
 
 /* Facts */
 .facts {

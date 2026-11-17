@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { DEFAULT_SETTINGS, type Settings } from "../settings";
+import { NETWORK } from "../network";
 
 interface Props {
 	open: boolean;
@@ -79,7 +80,7 @@ export function SettingsDialog({ open, settings, onClose, onSave }: Props) {
 				}}
 			>
 				<h2 id="settings-title" className="section-title">
-					Connections
+					{NETWORK.name} connections
 				</h2>
 				<p className="muted">Endpoints are tried in order, moving to the next one if a connection fails.</p>
 

@@ -8,10 +8,11 @@ export const pct = (part: number, whole: number, digits = 2) =>
 
 export const short = (addr: string) => `${addr.slice(0, 6)}…${addr.slice(-6)}`;
 
-/** `planck` in whole DOT, to at most two decimals. */
-export function dotAmount(planck: bigint, decimals: number, digits = 0): string {
+/** `planck` in whole tokens, to at most two decimals. */
+export function tokenAmount(planck: bigint, decimals: number, digits = 0): string {
 	const whole = Number(planck / 10n ** BigInt(decimals - 2)) / 100;
 	return whole.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
 }
 
-export const dot = (planck: bigint, decimals: number) => `${dotAmount(planck, decimals)} DOT`;
+export const tokens = (planck: bigint, decimals: number, symbol: string) =>
+	`${tokenAmount(planck, decimals)} ${symbol}`;

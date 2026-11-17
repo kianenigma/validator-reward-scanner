@@ -35,6 +35,7 @@ export function EraStrip({ overview, scans, selected, onSelect, queue, job }: Pr
 								: queue.includes(e.era)
 									? "Queued"
 									: "Not scanned",
+					...(e.collation.total > 0 ? [`${pct(e.collation.total, e.totalPoints)} from system chain collation`] : []),
 				].join("\n");
 				return (
 					<button

@@ -1,3 +1,5 @@
+import { NETWORK } from "./network";
+
 /** Where the dashboard reads each chain from. */
 export interface Settings {
 	/**
@@ -11,18 +13,16 @@ export interface Settings {
 	peopleRpc: string[];
 }
 
+/** Defaults of the network this page reads. */
 export const DEFAULT_SETTINGS: Settings = {
 	source: "rpc",
-	relayRpc: ["wss://rpc.polkadot.io", "wss://polkadot-rpc.n.dwellir.com", "wss://rpc.ibp.network/polkadot"],
-	assetHubRpc: [
-		"wss://polkadot-asset-hub-rpc.polkadot.io",
-		"wss://asset-hub-polkadot-rpc.n.dwellir.com",
-		"wss://sys.ibp.network/asset-hub-polkadot",
-	],
-	peopleRpc: ["wss://polkadot-people-rpc.polkadot.io", "wss://sys.ibp.network/people-polkadot"],
+	relayRpc: NETWORK.rpc.relay,
+	assetHubRpc: NETWORK.rpc.assetHub,
+	peopleRpc: NETWORK.rpc.people,
 };
 
-const KEY = "validator-reward-scanner.settings";
+// Per network, so each keeps its own endpoints.
+const KEY = `${NETWORK.storageKey}.settings`;
 
 export function loadSettings(): Settings {
 	try {

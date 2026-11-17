@@ -1,8 +1,10 @@
+import { NETWORK } from "./network";
 import type { EraScan } from "./types";
 
 // Era scans take a minute of RPC calls each and never change once an era concluded, so they are
-// kept in IndexedDB. Any failure here just means re-scanning.
-const DB = "validator-reward-scanner";
+// kept in IndexedDB, one database per network since eras are keyed by number alone. Any failure
+// here just means re-scanning.
+const DB = NETWORK.storageKey;
 const STORE = "scans";
 
 function open(): Promise<IDBDatabase> {

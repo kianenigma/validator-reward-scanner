@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { endSessionOf, fetchIdentities, fetchIncentiveWeights, fetchOverview, findEra, scanEra } from "../api/eras";
+import { fetchDap } from "../api/dap";
 import { deleteScan, loadScans, saveScan } from "../cache";
-import type { EraScan, Overview } from "../types";
+import type { Dap, EraScan, Overview } from "../types";
 import { EraStrip } from "./EraStrip";
 import { EraDetail } from "./EraDetail";
 import { IssuanceChart } from "./IssuanceChart";
+import { DapPanel } from "./DapPanel";
 import { useTheme, type ThemeChoice } from "../theme";
 import { SettingsDialog } from "./SettingsDialog";
 import { configure } from "../api/chains";
 import { loadSettings, saveSettings, type Settings } from "../settings";
+import { NETWORK, NETWORKS, switchNetwork } from "../network";
+import { fmt } from "../format";
 
 const THEMES: [ThemeChoice, string][] = [
 	["system", "Auto"],
@@ -25,7 +29,7 @@ export interface ScanJob {
 export function App() {
 	const [overview, setOverview] = useState<Overview | null>(null);
 	const [error, setError] = useState<string | null>(null);
-	const [progress, setProgress] = useState("Connecting to Polkadot…");
+	const [progress, setProgress] = useState(`Connecting to ${NETWORK.name}…`);
 	const [scans, setScans] = useState<Map<number, EraScan>>(new Map());
 	const [names, setNames] = useState<Map<string, string>>(new Map());
 	const [selected, setSelected] = useState<number | null>(null);
@@ -33,6 +37,8 @@ export function App() {
 	const [queue, setQueue] = useState<number[]>([]);
 	const [job, setJob] = useState<ScanJob | null>(null);
 	const [scanError, setScanError] = useState<string | null>(null);
+	const [dap, setDap] = useState<Dap | null>(null);
+	const [dapError, setDapError] = useState<string | null>(null);
 	const running = useRef(false);
 	const [theme, setTheme] = useTheme();
 	const [settings] = useState<Settings>(() => {
@@ -46,6 +52,19 @@ export function App() {
 		saveSettings(s);
 		location.reload();
 	};
+	const networkSwitch = (
+		<div className="segmented" role="group" aria-label="Network">
+			{Object.values(NETWORKS).map((n) => (
+				<button
+					key={n.id}
+					aria-pressed={n.id === NETWORK.id}
+					onClick={() => n.id !== NETWORK.id && switchNetwork(n.id)}
+				>
+					{n.name}
+				</button>
+			))}
+		</div>
+	);
 	const settingsDialog = (
 		<SettingsDialog
 			open={settingsOpen}
@@ -66,6 +85,9 @@ export function App() {
 				fetchIdentities(stashes)
 					.then(setNames)
 					.catch((e) => console.warn("identities unavailable", e));
+				fetchDap(ov.eras.map((e) => e.era))
+					.then(setDap)
+					.catch((e) => setDapError(e instanceof Error ? e.message : String(e)));
 			} catch (e) {
 				setError(e instanceof Error ? e.message : String(e));
 			}
@@ -128,7 +150,7 @@ export function App() {
 	if (error) {
 		return (
 			<main className="center-screen">
-				<h1 className="display">Couldn't read Polkadot</h1>
+				<h1 className="display">Couldn't read {NETWORK.name}</h1>
 				<p className="error-msg">{error}</p>
 				<div className="masthead-actions">
 					<button className="btn primary" onClick={() => location.reload()}>
@@ -137,6 +159,7 @@ export function App() {
 					<button className="btn" onClick={() => setSettingsOpen(true)}>
 						Change connections
 					</button>
+					{networkSwitch}
 				</div>
 				{settingsDialog}
 			</main>
@@ -150,6 +173,7 @@ export function App() {
 					{settings.source === "smoldot" ? "Syncing the smoldot light client. " : ""}
 					{progress}
 				</p>
+				{networkSwitch}
 			</main>
 		);
 	}
@@ -162,19 +186,20 @@ export function App() {
 				<div>
 					<h1 className="wordmark">Validator rewards</h1>
 					<p className="lede">
-						Where Polkadot validators' era points come from: authoring relay chain blocks, or parachain
+						Where {NETWORK.name} validators' era points come from: authoring relay chain blocks, or parachain
 						consensus. Era {overview.activeEra} is still running and counts only the sessions reported so
 						far.
 					</p>
 				</div>
 				<div className="masthead-actions">
+					{networkSwitch}
 					<button className="btn" disabled={unscanned.length === 0} onClick={() => enqueue(unscanned.slice(0, 7))}>
 						Scan the 7 latest eras
 					</button>
 					<button className="btn" onClick={() => setSettingsOpen(true)}>
 						Connections{settings.source === "smoldot" ? ": smoldot" : ""}
 					</button>
-					<div className="theme-switch" role="group" aria-label="Color theme">
+					<div className="segmented" role="group" aria-label="Color theme">
 						{THEMES.map(([value, label]) => (
 							<button key={value} aria-pressed={theme === value} onClick={() => setTheme(value)}>
 								{label}
@@ -193,11 +218,13 @@ export function App() {
 				job={job}
 			/>
 			<p className="strip-note">
-				Pink-marked eras have been scanned. Scanning reads all ~14,400 relay headers of an era (about a
-				minute) and is kept in this browser.
+				Pink-marked eras have been scanned. Scanning reads all ~
+				{fmt(overview.sessionsPerEra * NETWORK.blocksPerSession)} relay headers of an era (a minute or less)
+				and is kept in this browser.
 			</p>
 
 			<IssuanceChart overview={overview} selected={selected} onSelect={setSelected} />
+			<DapPanel dap={dap} error={dapError} />
 
 			{settingsDialog}
 
